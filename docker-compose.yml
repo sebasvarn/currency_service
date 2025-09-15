@@ -1,0 +1,45 @@
+
+services:
+  web:
+    build: .
+    container_name: currency_exchange_web
+    command: python manage.py runserver 0.0.0.0:9000
+    volumes:
+      - .:/app
+    ports:
+      - "9000:9000"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    container_name: currency_worker
+    command: celery -A currency_service worker -l info
+    volumes:
+      - .:/app
+    working_dir: /app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  beat:
+    build: .
+    container_name: currency_beat
+    command: celery -A currency_service beat -l info
+    volumes:
+      - .:/app
+    working_dir: /app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:8.2-alpine
+    container_name: currency_redis
+    ports:
+      - "6379:6379"
+
