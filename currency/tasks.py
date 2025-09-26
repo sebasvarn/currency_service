@@ -5,7 +5,24 @@ from .models import Exchange
 from decimal import Decimal
 from bs4 import BeautifulSoup
 from celery import shared_task
+from monedas.models import Moneda, TasaCambio
 
+COMISIONES = [
+     {"currency": "USD", "commission_buy": 50, "commission_sell": 100, "base_currency": "PYG"},
+     {"currency": "EUR", "commission_buy": 60, "commission_sell": 120, "base_currency": "PYG"},
+     {"currency": "BRL", "commission_buy": 10, "commission_sell": 20, "base_currency": "PYG"},
+     {"currency": "ARS", "commission_buy": 1, "commission_sell": 2, "base_currency": "PYG"},
+     {"currency": "CLP", "commission_buy": 2, "commission_sell": 4, "base_currency": "PYG"},
+     {"currency": "JPY", "commission_buy": 8, "commission_sell": 16, "base_currency": "PYG"},
+     {"currency": "GBP", "commission_buy": 70, "commission_sell": 140, "base_currency": "PYG"},
+     {"currency": "CHF", "commission_buy": 60, "commission_sell": 120, "base_currency": "PYG"},
+     {"currency": "AUD", "commission_buy": 35, "commission_sell": 70, "base_currency": "PYG"}
+]
+
+COMISIONES_MAP = {
+    c["currency"]: {"buy": Decimal(str(c["commission_buy"])), "sell": Decimal(str(c["commission_sell"]))}
+    for c in COMISIONES
+}
 
 @shared_task()
 def fetch_exchange_rates_bcp():
@@ -63,11 +80,18 @@ def fetch_exchange_rates_cambios_chaco():
         return "No exchange table found"
 
     rows = tbody.find_all("tr")
+    fuente = "Cambios Chaco"
     base_currency = "PYG"
-    source = "Cambios Chaco"
     count = 0
 
-
+    mapping = {
+        "Dólar Americano": "USD",
+        "Euro": "EUR",
+        "Real": "BRL",
+        "Peso Argentino": "ARS",
+        "Peso Chileno": "CLP",
+        "Libra Esterlina": "GBP",
+    }
 
     for row in rows:
         cols = row.find_all("td")
@@ -75,19 +99,8 @@ def fetch_exchange_rates_cambios_chaco():
             continue
 
         name = cols[0].get_text(strip=True)
-
-        mapping = {
-            "Dólar Americano": "USD",
-            "Euro": "EUR",
-            "Real": "BRL",
-            "Peso Argentino": "ARS",
-            "Peso Chileno": "CLP",
-            "Libra Esterlina": "GBP",
-            # add others if needed
-        }
-
-        currency = mapping.get(name)
-        if not currency or currency == base_currency:
+        codigo = mapping.get(name)
+        if not codigo or codigo == base_currency:
             continue
 
         buy_tag = cols[1].find("span", class_="purchase")
@@ -95,19 +108,38 @@ def fetch_exchange_rates_cambios_chaco():
         if not buy_tag or not sell_tag:
             continue
 
-        buy = Decimal(buy_tag.text.strip().replace(".", "").replace(",", "."))
-        sell = Decimal(sell_tag.text.strip().replace(".", "").replace(",", "."))
+        try:
+            raw_buy = Decimal(buy_tag.text.strip().replace(".", "").replace(",", "."))
+            raw_sell = Decimal(sell_tag.text.strip().replace(".", "").replace(",", "."))
+        except Exception:
+            continue
+        print(f"Raw buy: {raw_buy}, Raw sell: {raw_sell}")
+        pb = (raw_buy + raw_sell) / 2
 
-        Exchange.objects.create(
-            currency=currency,
-            buy=buy,
-            sell=sell,
-            source=source,
+        com = COMISIONES_MAP.get(codigo, {"buy": Decimal("0"), "sell": Decimal("0")})
+        comision_buy = com["buy"]
+        comision_sell = com["sell"]
+
+        # Fórmula: Venta (PYG -> moneda extranjera)
+        tc_venta = pb + comision_sell
+
+        # Fórmula: Compra (moneda extranjera -> PYG)
+        tc_compra = pb - comision_buy
+
+        # asegurar moneda existe
+        moneda, _ = Moneda.objects.get_or_create(codigo=codigo, defaults={"nombre": name})
+
+        # guardar en tasas
+        TasaCambio.objects.create(
+            moneda=moneda,
+            compra=tc_compra,
+            venta=tc_venta,
+            fuente=fuente,
+            es_automatica=True,
         )
         count += 1
 
-    return f"Cambios Chaco: saved {count} currencies"
-
+    return f"Cambios Chaco: saved {count} tasas (con comisiones)"
 
 @shared_task
 def fetch_exchange_rates_maxi():

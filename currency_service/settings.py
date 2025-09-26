@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'currency',
+    'monedas',
     'rest_framework',
 ]
 
@@ -80,17 +81,17 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
 
 
 CELERY_BEAT_SCHEDULE = {
-    'fetch-bcp-every-hour': {
+    'fetch-bcp-every-day': {
         'task': 'currency.tasks.fetch_exchange_rates_bcp',
-        'schedule': crontab(minute=0, hour='*'),
+        'schedule': crontab(minute=0, hour=0, day_of_week='*'),
     },
-    'fetch-chaco-every-hour': {
+    'fetch-chaco-every-day': {
         'task': 'currency.tasks.fetch_exchange_rates_cambios_chaco',
-        'schedule': crontab(minute=0, hour='*'),
+        'schedule': crontab(minute=0, hour=0 , day_of_week='*'),
     },
-    'fetch-maxi-every-hour': {
+    'fetch-maxi-every-day': {
         'task': 'currency.tasks.fetch_exchange_rates_maxi',
-        'schedule': crontab(minute=0, hour='*'),
+        'schedule': crontab(minute=0, hour=0, day_of_week='*'),
     }
 }
 

@@ -73,3 +73,7 @@ coverage.xml
 
 # System files
 Thumbs.db
+
+
+# IntelliJ
+.idea
